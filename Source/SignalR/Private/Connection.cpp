@@ -100,16 +100,34 @@ IWebSocket::FWebSocketMessageEvent& FConnection::OnMessage()
 
 void FConnection::Negotiate()
 {
+    UE_LOG(LogTemp, Warning, TEXT("ConnectToSignalR Negotiate called"));
+
     TSharedRef<IHttpRequest, ESPMode::ThreadSafe> HttpRequest = FHttpModule::Get().CreateRequest();
 
     HttpRequest->SetVerb(TEXT("POST"));
-    HttpRequest->OnProcessRequestComplete().BindSP(AsShared(), &FConnection::OnNegotiateResponse);
+    // HttpRequest->OnProcessRequestComplete().BindSP(AsShared(), &FConnection::OnNegotiateResponse);
+    HttpRequest->OnProcessRequestComplete().BindLambda([](FHttpRequestPtr Request, FHttpResponsePtr Response, bool bConnectedSuccessfully)
+    {
+        UE_LOG(LogSignalR, Warning, TEXT("Negotiate response: %s"), *Response->GetContentAsString());
+    });
+    HttpRequest->OnProcessRequestComplete().BindLambda([this](FHttpRequestPtr Request, FHttpResponsePtr Response, bool bConnectedSuccessfully)
+    {
+        this->OnNegotiateResponse(Request, Response, bConnectedSuccessfully);
+    });
+    HttpRequest->OnRequestProgress().BindLambda([](FHttpRequestPtr Request, int32 BytesSent, int32 BytesReceived)
+    {
+        UE_LOG(LogSignalR, Warning, TEXT("Negotiate progress: %d bytes sent, %d bytes received"), BytesSent, BytesReceived);
+    });
     HttpRequest->SetURL(Host + TEXT("/negotiate?negotiateVersion=1"));
     HttpRequest->ProcessRequest();
+
+    UE_LOG(LogTemp, Warning, TEXT("ConnectToSignalR Negotiate end"));
 }
 
 void FConnection::OnNegotiateResponse(FHttpRequestPtr InRequest, FHttpResponsePtr InResponse, bool bConnectedSuccessfully)
 {
+    UE_LOG(LogTemp, Warning, TEXT("ConnectToSignalR OnNegotiateResponse"));
+
     if (!bConnectedSuccessfully)
     {
         UE_LOG(LogSignalR, Error, TEXT("Could not connect to host"))
@@ -144,8 +162,36 @@ void FConnection::OnNegotiateResponse(FHttpRequestPtr InRequest, FHttpResponsePt
             if (JsonObject->HasTypedField<EJson::String>(TEXT("url")))
             {
                 FString RedirectionUrl = JsonObject->GetStringField(TEXT("url"));
-                FString AccessToken = JsonObject->GetStringField(TEXT("accessToken"));
-                // TODO: redirection
+                AccessToken = JsonObject->GetStringField(TEXT("accessToken"));
+
+                Host = RedirectionUrl;
+
+                UE_LOG(LogTemp, Warning, TEXT("ConnectToSignalR Host: %s"), *Host);
+
+                FString BaseUrl = Host;
+                int32 QueryIndex = BaseUrl.Find(TEXT("?"), ESearchCase::IgnoreCase, ESearchDir::FromStart);
+                if (QueryIndex != INDEX_NONE)
+                {
+                    // Insert `/negotiate` before the query parameters
+                    BaseUrl.InsertAt(QueryIndex, TEXT("negotiate"));
+                    BaseUrl += TEXT("&negotiateVersion=1"); // Append negotiateVersion=1 to existing parameters
+                }
+                else
+                {
+                    BaseUrl += TEXT("/negotiate?negotiateVersion=1"); // Add negotiate if no query parameters
+                }
+
+                UE_LOG(LogTemp, Warning, TEXT("ConnectToSignalR BaseUrl: %s"), *BaseUrl);
+                UE_LOG(LogTemp, Warning, TEXT("ConnectToSignalR AccessToken: %s"), *AccessToken);
+
+                TSharedRef<IHttpRequest, ESPMode::ThreadSafe> HttpRequest = FHttpModule::Get().CreateRequest();
+
+                HttpRequest->SetVerb(TEXT("POST"));
+                HttpRequest->OnProcessRequestComplete().BindSP(AsShared(), &FConnection::OnNegotiateResponse);
+                HttpRequest->SetURL(BaseUrl);
+                HttpRequest->SetHeader(TEXT("Authorization"), TEXT("Bearer ") + AccessToken);
+                HttpRequest->ProcessRequest();
+
                 return;
             }
 
@@ -186,6 +232,7 @@ void FConnection::OnNegotiateResponse(FHttpRequestPtr InRequest, FHttpResponsePt
             if (JsonObject->HasTypedField<EJson::String>(TEXT("connectionToken")))
             {
                 ConnectionId = JsonObject->GetStringField(TEXT("connectionToken"));
+                Host = Host + TEXT("&id=") + ConnectionId + TEXT("&access_token=") + AccessToken;
             }
 
             StartWebSocket();
@@ -200,6 +247,9 @@ void FConnection::OnNegotiateResponse(FHttpRequestPtr InRequest, FHttpResponsePt
 void FConnection::StartWebSocket()
 {
     const FString COnver = ConvertToWebsocketUrl(Host);
+
+    UE_LOG(LogSignalR, Warning, TEXT("Start websocket connection to %s"), *COnver);
+
     Connection = FWebSocketsModule::Get().CreateWebSocket(COnver, FString(), Headers);
 
     if(Connection.IsValid())

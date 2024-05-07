@@ -59,6 +59,7 @@ private:
 
     TSharedPtr<IWebSocket> Connection;
     FString Host;
+    FString AccessToken;
     TMap<FString, FString> Headers;
 
     FConnectionFailedEvent OnConnectionFailedEvent;
