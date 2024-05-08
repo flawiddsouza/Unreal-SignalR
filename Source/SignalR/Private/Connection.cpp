@@ -100,33 +100,21 @@ IWebSocket::FWebSocketMessageEvent& FConnection::OnMessage()
 
 void FConnection::Negotiate()
 {
-    UE_LOG(LogTemp, Warning, TEXT("ConnectToSignalR Negotiate called"));
+    UE_LOG(LogSignalR, Warning, TEXT("ConnectToSignalR Negotiate called"));
 
     TSharedRef<IHttpRequest, ESPMode::ThreadSafe> HttpRequest = FHttpModule::Get().CreateRequest();
 
     HttpRequest->SetVerb(TEXT("POST"));
-    // HttpRequest->OnProcessRequestComplete().BindSP(AsShared(), &FConnection::OnNegotiateResponse);
-    HttpRequest->OnProcessRequestComplete().BindLambda([](FHttpRequestPtr Request, FHttpResponsePtr Response, bool bConnectedSuccessfully)
-    {
-        UE_LOG(LogSignalR, Warning, TEXT("Negotiate response: %s"), *Response->GetContentAsString());
-    });
-    HttpRequest->OnProcessRequestComplete().BindLambda([this](FHttpRequestPtr Request, FHttpResponsePtr Response, bool bConnectedSuccessfully)
-    {
-        this->OnNegotiateResponse(Request, Response, bConnectedSuccessfully);
-    });
-    HttpRequest->OnRequestProgress().BindLambda([](FHttpRequestPtr Request, int32 BytesSent, int32 BytesReceived)
-    {
-        UE_LOG(LogSignalR, Warning, TEXT("Negotiate progress: %d bytes sent, %d bytes received"), BytesSent, BytesReceived);
-    });
+    HttpRequest->OnProcessRequestComplete().BindSP(AsShared(), &FConnection::OnNegotiateResponse);
     HttpRequest->SetURL(Host + TEXT("/negotiate?negotiateVersion=1"));
     HttpRequest->ProcessRequest();
 
-    UE_LOG(LogTemp, Warning, TEXT("ConnectToSignalR Negotiate end"));
+    UE_LOG(LogSignalR, Warning, TEXT("ConnectToSignalR Negotiate end"));
 }
 
 void FConnection::OnNegotiateResponse(FHttpRequestPtr InRequest, FHttpResponsePtr InResponse, bool bConnectedSuccessfully)
 {
-    UE_LOG(LogTemp, Warning, TEXT("ConnectToSignalR OnNegotiateResponse"));
+    UE_LOG(LogSignalR, Warning, TEXT("ConnectToSignalR OnNegotiateResponse"));
 
     if (!bConnectedSuccessfully)
     {
@@ -166,7 +154,7 @@ void FConnection::OnNegotiateResponse(FHttpRequestPtr InRequest, FHttpResponsePt
 
                 Host = RedirectionUrl;
 
-                UE_LOG(LogTemp, Warning, TEXT("ConnectToSignalR Host: %s"), *Host);
+                UE_LOG(LogSignalR, Warning, TEXT("ConnectToSignalR Host: %s"), *Host);
 
                 FString BaseUrl = Host;
                 int32 QueryIndex = BaseUrl.Find(TEXT("?"), ESearchCase::IgnoreCase, ESearchDir::FromStart);
@@ -181,8 +169,8 @@ void FConnection::OnNegotiateResponse(FHttpRequestPtr InRequest, FHttpResponsePt
                     BaseUrl += TEXT("/negotiate?negotiateVersion=1"); // Add negotiate if no query parameters
                 }
 
-                UE_LOG(LogTemp, Warning, TEXT("ConnectToSignalR BaseUrl: %s"), *BaseUrl);
-                UE_LOG(LogTemp, Warning, TEXT("ConnectToSignalR AccessToken: %s"), *AccessToken);
+                UE_LOG(LogSignalR, Warning, TEXT("ConnectToSignalR BaseUrl: %s"), *BaseUrl);
+                UE_LOG(LogSignalR, Warning, TEXT("ConnectToSignalR AccessToken: %s"), *AccessToken);
 
                 TSharedRef<IHttpRequest, ESPMode::ThreadSafe> HttpRequest = FHttpModule::Get().CreateRequest();
 
